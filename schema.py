@@ -4,10 +4,19 @@ import uuid
 from datetime import datetime
 
 
+class Post(graphene.ObjectType):
+    title = graphene.String()
+    content = graphene.String()
+
+
 class User(graphene.ObjectType):
     id = graphene.ID(default_value=str(uuid.uuid4()))
     username = graphene.String()
     created_at = graphene.DateTime(default_value=datetime.now())
+    avatar_url = graphene.String()
+
+    def resolve_avatar_url(self, info):
+        return 'https://cloudinary.com/{}/{}'.format(self.username, self.id)
 
 
 class Query(graphene.ObjectType):
@@ -30,51 +39,90 @@ class Query(graphene.ObjectType):
         ][:limit]
 
 
-
 class CreateUser(graphene.Mutation):
     user = graphene.Field(User)
+
     class Arguments:
         username = graphene.String()
-
 
     def mutate(self, info, username):
         user = User(username=username)
         return CreateUser(user=user)
 
+
+class CreatePost(graphene.Mutation):
+    post = graphene.Field(Post)
+
+    class Arguments:
+        title = graphene.String()
+        content = graphene.String()
+
+    def mutate(self, info, title, content):
+        is_anonymous = info.context.get('is_anonymous')
+        if is_anonymous:
+            raise Exception('Not Authenticated')
+        post = Post(title=title, content=content)
+        return CreatePost(post=post)
+
+
 class Mutation(graphene.ObjectType):
     create_user = CreateUser.Field()
+    create_post = CreatePost.Field()
 
 
 schema = graphene.Schema(query=Query, mutation=Mutation)
 
-# result = schema.execute(
-#     '''
-#     {
-#         hello
-#         isAdmin
-#         users(limit: 1) {
-#             id
-#             username
-#             createdAt
-#         }
-#     }
-#     '''
-# )
+result = schema.execute(
+    '''
+    query getUsersQuery ($limit: Int) {
+        hello
+        isAdmin
+        users(limit: $limit) {
+            id
+            username
+            createdAt
+            avatarUrl
+        }
+    }
+    ''',
+    variable_values={'limit': 1}
+)
+
+dictResult = dict(result.data.items())
+
+print(json.dumps(dictResult, indent=2))
 
 result = schema.execute(
     '''
-    mutation {
-       createUser(username: "Freddo") {
+    mutation($username: String) {
+       createUser(username: $username) {
            user {
                id
                username
            }
        }
-   } 
-    '''
+    } 
+    ''',
+    variable_values={'username': 'Freddo Bar'}
 )
 
-print(result)
+result = schema.execute(
+    '''
+    mutation {
+        createPost(title: "Hello", content: "World") {
+            post {
+                title
+                content
+            }
+        }
+    }
+    ''',
+    context={
+        'is_anonymous': False
+    }
+)
+
+# print(result)
 
 dictResult = dict(result.data.items())
 
